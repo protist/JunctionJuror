@@ -31,15 +31,14 @@ Usage:' # TODO: write description
   opts.on('-j', '--junction JUNCTION.BED.LIST',
           'JUNCTION.BED.LIST is a required space-delimited list, with each line '\
           'comprising a path to a junction.bed file, followed by a condition.') do |j|
-    $options[:junction_list] = j
+    $options[:junction_list] = File.expand_path(j)
   end
   opts.on('-g', '--ref_gff GFF_FILE',
           'Reference GFF_FILE (e.g. from eupathdb) is required.') do |g|
-    $options[:refgff_path] = g
+    $options[:refgff_path] = File.expand_path(g)
   end
-  opts.on('-o', '--output OUTPUT_PATH',
-          'OUTPUT_PATH is required.') do |o|
-    $options[:output_path] = o
+  opts.on('-o', '--output OUTPUT_PATH', 'OUTPUT_PATH is required.') do |o|
+    $options[:output_path] = File.expand_path(o)
   end
 end.parse!
 
@@ -59,19 +58,92 @@ $options[:verbosity] = 0 if !$options[:verbosity]
 # Check options.
 to_abort=false
 if !(File.file? $options[:junction_list])
-  puts "Error: junction.bed list #{$options[:junction_list]} doesn't exist."
+  $stderr.puts "Error: junction.bed list #{$options[:junction_list]} doesn't exist."
   to_abort=true
 end
 if !(File.exists? $options[:refgff_path])
-  puts "Error: reference gff #{$options[:refgff_path]} doesn't exist."
+  $stderr.puts "Error: reference gff #{$options[:refgff_path]} doesn't exist."
   to_abort=true
 end
 if File.exists? $options[:output_path]
-  puts "Error: output path #{$options[:output_path]} already exists."
+  $stderr.puts "Error: output path #{$options[:output_path]} already exists."
   to_abort=true
 end
-if to_abort
-  abort
+raise OptionParser::InvalidArgument if to_abort
+
+################################################################################
+### Define Junction class
+class UserJunctions
+  # A UserJunctions object stores information from TopHat outputs, specifically
+  # the chromosome and the coordinates of the skipped bases in the junction.
+  # It will also store the associated gene ID.
+  # @junctions
+  # {:condition => {:chromosome => [[start, stop, count],…]}}}
+  # later,
+  # {:condition => {:chromosome => [[start, stop, count, :gene_id],…]}}
+
+  def initialize(junctions = {})
+    @junctions = junctions
+  end
+
+  # Create a new condition and chromosome if necessary, then add to count for
+  #   coordinates.
+  def write_junctions_for_replicate(condition, chromosome, start, stop)
+    # Create new condition hash if it doesn't exist.
+    @junctions[condition] ||= {}
+    # Create new chromosome array if it doesn't exist.
+    @junctions[condition][chromosome.to_sym] ||= []
+    # Append coordinates to this array if necessary; add count.
+    # TODO: This reads the entire array each time. If this is too slow, it might
+    #   be better to read each replicate into individual objects, sort, then
+    #   collate sequentially.
+    junction_index = @junctions[condition][chromosome.to_sym].index do |junction|
+      junction[0] == start && junction[1] == stop
+    end
+    if junction_index
+      @junctions[condition][chromosome.to_sym][junction_index][2] += 1
+    else
+      @junctions[condition][chromosome.to_sym].push [start,stop,1]
+    end
+  end
+
+
 end
 
-# Junction path can be absolute or relative to the list.
+################################################################################
+### Read junction.bed file from user's experimental data
+# Parse junction.bed list.
+# Junction paths can be relative to the list path, or absolute. Ignore comments.
+puts "#{Time.new}: parsing junction.bed list."
+junction_list = {} # {:condition => ['path/rep1', '/path/rep2'],…}
+
+File.open($options[:junction_list]).each do |line|
+  # These are the parts of each line that we need.
+  split_line = line.split
+  if split_line != [] && /^[^#]/ =~ split_line[0]
+    junction_list[split_line[1].to_sym] ||= []
+    junction_list[split_line[1].to_sym].push File.expand_path(split_line[0],\
+        File.dirname($options[:junction_list])) # relative to junction.bed.list
+  end
+end
+
+# Parse junction.bed files.
+#   chr feature_start-1 feature_end (name) (depth) (strand) (bold_feature_start-1)
+#     (bold_feature_end-1) (rgb) (#exons) blocksizes block_start_relative_to_feature_start
+#   For TopHat out, ignore (parenthesised):
+#     name, strand, bold_features and rgb are irrelevant; depth might be useful
+#     to define cutoffs for "real" splicing, but is ignored here since we have
+#     replicates; #exons is always 2
+#   Start coordinate == $2 + $11:1 + 1 == feature_start-1 + 1st_blocksize + 1.
+#   Stop coordinate == $3 - $11:2 == feature_end - 2nd_blocksize
+#     or $2 + $12:2 == feature_start-1 + 2nd_block_start_relative_to_feature_start
+#   Also need chr.
+junctions = UserJunctions.new
+
+# N.B. junction.bed is not fully sorted.
+
+# Import gff.
+
+# Sort junctions and gff.
+puts "#{Time.new}: sorting junctions."
+#junctions.sort!
