@@ -1,7 +1,7 @@
-File_path condition
-0_1/junction.bed 0
-0_2/junction.bed 0
-0_3/junction.bed 0
-4_1/junction.bed 4
-4_2/junction.bed 4
-4_3/junction.bed 4
+# File_path condition
+tophat_out/0_1/junction.bed uninduced
+tophat_out/0_2/junction.bed uninduced
+tophat_out/0_3/junction.bed uninduced
+tophat_out/4_1/junction.bed four_hours
+tophat_out/4_2/junction.bed four_hours
+tophat_out/4_3/junction.bed four_hours
