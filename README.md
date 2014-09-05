@@ -1,4 +1,4 @@
-SS_DU
+ss_du
 =====
 Splice-site differential-usage.
 
