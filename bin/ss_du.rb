@@ -81,10 +81,11 @@ class UserJunctions
   # {:condition => {:chromosome => [[start, stop, count],…]}}}
   # later,
   # {:condition => {:chromosome => [[start, stop, count, :gene_id],…]}}
-
   def initialize(junctions = {})
     @junctions = junctions
   end
+
+  attr_reader(:junctions)
 
   # Create a new condition and chromosome if necessary, then add to count for
   #   coordinates.
@@ -114,7 +115,7 @@ end
 ### Read junction.bed file from user's experimental data
 # Parse junction.bed list.
 # Junction paths can be relative to the list path, or absolute. Ignore comments.
-puts "#{Time.new}: parsing junction.bed list."
+puts "#{Time.new}: Parsing junction.bed list."
 junction_list = {} # {:condition => ['path/rep1', '/path/rep2'],…}
 
 File.open($options[:junction_list]).each do |line|
@@ -123,27 +124,45 @@ File.open($options[:junction_list]).each do |line|
   if split_line != [] && /^[^#]/ =~ split_line[0]
     junction_list[split_line[1].to_sym] ||= []
     junction_list[split_line[1].to_sym].push File.expand_path(split_line[0],\
-        File.dirname($options[:junction_list])) # relative to junction.bed.list
+        File.dirname($options[:junction_list])) # relative to junctions.bed.list
   end
 end
 
-# Parse junction.bed files.
+puts "#{Time.new}:   #{junction_list.count} conditions: "\
+     "#{junction_list.keys.collect {|cond| cond.to_s}.join(', ')}"
+puts "#{Time.new}:   with replicates: "\
+     "#{junction_list.values.collect {|cond| cond.count}.join(', ')}."
+
+# Parse junction.bed files themselves.
 #   chr feature_start-1 feature_end (name) (depth) (strand) (bold_feature_start-1)
 #     (bold_feature_end-1) (rgb) (#exons) blocksizes block_start_relative_to_feature_start
 #   For TopHat out, ignore (parenthesised):
 #     name, strand, bold_features and rgb are irrelevant; depth might be useful
 #     to define cutoffs for "real" splicing, but is ignored here since we have
 #     replicates; #exons is always 2
-#   Start coordinate == $2 + $11:1 + 1 == feature_start-1 + 1st_blocksize + 1.
-#   Stop coordinate == $3 - $11:2 == feature_end - 2nd_blocksize
-#     or $2 + $12:2 == feature_start-1 + 2nd_block_start_relative_to_feature_start
+#   Start coordinate == $1 + $10:0 + 1 == feature_start-1 + 1st_blocksize + 1.
+#   Stop coordinate == $2 - $10:1 == feature_end - 2nd_blocksize
+#     or $1 + $11:1 == feature_start-1 + 2nd_block_start_relative_to_feature_start
 #   Also need chr.
+puts "#{Time.new}: Parsing junction.bed files."
 junctions = UserJunctions.new
+junction_list.each do |cond, paths|
+  paths.each do |path|
+    File.open(path).drop(1).each do |line| # skip first line
+      split_line = line.split("\t")
+      block_sizes = split_line[10].split(',')
+      abort("Error: expected two blocks for junction #{split_line[3]} in #{path}.") if block_sizes.count != 2
+      start = split_line[1].to_i + block_sizes[0].to_i + 1
+      stop = split_line[2].to_i - block_sizes[1].to_i
+      junctions.write_junctions_for_replicate(cond, split_line[0], start, stop)
+    end
+  end
+end
 
-# N.B. junction.bed is not fully sorted.
+# N.B. junctions.bed is not fully sorted.
 
 # Import gff.
 
 # Sort junctions and gff.
-puts "#{Time.new}: sorting junctions."
+puts "#{Time.new}: Sorting junctions."
 #junctions.sort!
