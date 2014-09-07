@@ -40,6 +40,10 @@ Usage:' # TODO: write description
   opts.on('-o', '--output OUTPUT_PATH', 'OUTPUT_PATH is required.') do |o|
     $options[:output_path] = File.expand_path(o)
   end
+  opts.on('-t', '--threshold NUMBER', 'NUMBER replicates are needed to '\
+      'confirm a junction. Defaults to 2.') do |t|
+    $options[:min_replicates] = t.to_i
+  end
 end.parse!
 
 # Require Ruby 1.9.2 for ordered hash. This is quicker than continual hash.sort.
@@ -54,6 +58,7 @@ raise OptionParser::MissingArgument if $options[:junction_list].nil? ||
     $options[:refgff_path].nil? ||
     $options[:output_path].nil?
 $options[:verbosity] = 0 if !$options[:verbosity]
+$options[:min_replicates] = 2 if !$options[:min_replicates]
 
 # Check options.
 to_abort=false
@@ -108,7 +113,19 @@ class UserJunctions
     end
   end
 
+  # Remove junctions according to start coords.
+  def prune!
+    # @junctions.each_with_index do |condition_index|
+    #   @junctions.key.each do |chromosome|
+    #     chromosome.select! {|junction| junction[2] < $options[:min_replicates]}
+    #   end
+    # end
+  end
 
+  # Sort junctions according to start coords.
+  def sort!
+
+  end
 end
 
 ################################################################################
@@ -134,6 +151,7 @@ puts "#{Time.new}:   with replicates: "\
      "#{junction_list.values.collect {|cond| cond.count}.join(', ')}."
 
 # Parse junction.bed files themselves.
+#   http://genome.ucsc.edu/FAQ/FAQformat.html#format1
 #   chr feature_start-1 feature_end (name) (depth) (strand) (bold_feature_start-1)
 #     (bold_feature_end-1) (rgb) (#exons) blocksizes block_start_relative_to_feature_start
 #   For TopHat out, ignore (parenthesised):
@@ -158,11 +176,14 @@ junction_list.each do |cond, paths|
     end
   end
 end
-
-# N.B. junctions.bed is not fully sorted.
+j1 = junctions.junctions
+junctions.prune!
 
 # Import gff.
 
 # Sort junctions and gff.
 puts "#{Time.new}: Sorting junctions."
-#junctions.sort!
+junctions.sort!
+
+# Assign genes to junctions. A gene is assigned if at least one matching base
+#   from both flanks overlaps with the CDS. Otherwise it is discarded.
