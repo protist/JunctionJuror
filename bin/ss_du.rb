@@ -113,13 +113,15 @@ class UserJunctions
     end
   end
 
-  # Remove junctions according to start coords.
+  # Remove junctions according to number of confirming replicates.
   def prune!
-    # @junctions.each_with_index do |condition_index|
-    #   @junctions.key.each do |chromosome|
-    #     chromosome.select! {|junction| junction[2] < $options[:min_replicates]}
-    #   end
-    # end
+    @junctions.each do |condition, condition_details|
+      condition_details.each do |chromosome, _|
+        @junctions[condition][chromosome].reject! do |junction|
+          junction[2] < $options[:min_replicates]
+        end
+      end
+    end
   end
 
   # Sort junctions according to start coords.
@@ -176,7 +178,9 @@ junction_list.each do |cond, paths|
     end
   end
 end
-j1 = junctions.junctions
+
+# Prune junctions with not enough replicates.
+puts "#{Time.new}: Ignoring junctions in <#{$options[:min_replicates]} replicates."
 junctions.prune!
 
 # Import gff.
