@@ -113,10 +113,26 @@ class UserJunctions
     end
   end
 
+  # Return a count of the total number of junctions with specified replicates.
+  #   If `replicates` is false, then returns the total count.
+  def count_junctions(replicates)
+    total = 0
+    @junctions.each_value do |junctions_by_chromosome|
+      junctions_by_chromosome.each_value do |junctions|
+        if replicates
+          total += junctions.count {|junction| junction[2] == replicates}
+        else
+          total += junctions.count
+        end
+      end
+    end
+    total
+  end
+
   # Remove junctions according to number of confirming replicates.
   def prune!
-    @junctions.each do |condition, condition_details|
-      condition_details.each do |chromosome, _|
+    @junctions.each do |condition, junctions_by_chromosome|
+      junctions_by_chromosome.each do |chromosome, _|
         @junctions[condition][chromosome].reject! do |junction|
           junction[2] < $options[:min_replicates]
         end
@@ -164,7 +180,7 @@ puts "#{Time.new}:   with replicates: "\
 #   Stop coordinate == $2 - $10:1 == feature_end - 2nd_blocksize
 #     or $1 + $11:1 == feature_start-1 + 2nd_block_start_relative_to_feature_start
 #   Also need chr.
-puts "#{Time.new}: Parsing junction.bed files."
+puts "#{Time.new}: Importing junction.bed files."
 junctions = UserJunctions.new
 junction_list.each do |cond, paths|
   paths.each do |path|
@@ -179,11 +195,20 @@ junction_list.each do |cond, paths|
   end
 end
 
-# Prune junctions with not enough replicates.
-puts "#{Time.new}: Ignoring junctions in <#{$options[:min_replicates]} replicates."
-junctions.prune!
-
 # Import gff.
+
+# Prune junctions with not enough replicates, and output some statistics.
+puts "#{Time.new}: Pruning junctions in <#{$options[:min_replicates]} replicates."
+pre_count = junctions.count_junctions(false)
+junctions.prune!
+post_count = junctions.count_junctions(false)
+puts "#{Time.new}:   #{pre_count - post_count} junctions removed."
+max_replicates = junction_list.values.collect {|cond| cond.count}.max
+($options[:min_replicates]..max_replicates).each do |replicates|
+  puts "#{Time.new}:   #{junctions.count_junctions(replicates)} junctions "\
+      "confirmed in #{replicates} replicates."
+end
+
 
 # Sort junctions and gff.
 puts "#{Time.new}: Sorting junctions."
