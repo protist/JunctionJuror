@@ -151,6 +151,76 @@ class UserJunctions
 end
 
 ################################################################################
+### Define ReferenceGFF class
+class ReferenceGFF
+  # A ReferenceGFF object stores gene models, specifically chromosome, gene ID,
+  # and terminal start and stop coordinates (e.g. of the CDS).
+  def initialize(genes_by_chromosome = {})
+    @genes_by_chromosome = genes_by_chromosome
+  end
+
+  attr_reader(:genes_by_chromosome) # for debugging
+
+  # Create a new chromosome and gene id if necessary, and replace start and stop
+  # coordinates if they increase the boundaries.
+  # {:chromosome => {:geneID => [start, stop]} }
+  def write_gene(chromosome, gene_id, start, stop)
+    # Create new chromosome hash if it doesn't exist.
+    @genes_by_chromosome[chromosome.to_sym] ||= {}
+    # Create new gene_id hash if it doesn't exist.
+    @genes_by_chromosome[chromosome.to_sym][gene_id.to_sym] ||= [start, stop]
+    # Compare coordinates to existing ones (redundancy if you've just created
+    #   the gene, but I'm not sure if it's still quicker to use ||= )
+    if start < @genes_by_chromosome[chromosome.to_sym][gene_id.to_sym].first
+      @genes_by_chromosome[chromosome.to_sym][gene_id.to_sym][0] = start
+    end
+    if stop > @genes_by_chromosome[chromosome.to_sym][gene_id.to_sym].last
+      @genes_by_chromosome[chromosome.to_sym][gene_id.to_sym][1] = stop
+    end
+  end
+
+  # For each chromosome, sort genes by start coordinates.
+  def sort!
+    @genes_by_chromosome.each do |chromosome, genes|
+      ordered_genes = Hash[genes.sort_by { |_, coords| coords }]
+      @genes_by_chromosome[chromosome] = ordered_genes
+      # I'd prefer the following, but Ruby doesn't have sort_by! for hashes. :(
+      #   @genes_by_chromosome[chromosome].sort_by! { |_, coords| coords[0] }
+    end
+  end
+
+  # Check to see if adjacent genes overlap (or touch). If so, then notify the
+  #   user and abort. Users should then manually fix it (e.g. by deleting one of
+  #   the genes).
+  # N.B. for ToxoDB files, there are only 3 and 14 overlaps for GT1 and ME49
+  #   respectively anyway.
+  def check_overlaps
+    overlap_count = 0
+    total_count = 0
+    @genes_by_chromosome.each do |chromosome, genes_for_this_chromosome|
+      prev_gene_id = nil
+      genes_for_this_chromosome.each do |gene_id, coords|
+        if prev_gene_id
+          total_count += 1
+          if genes_for_this_chromosome[prev_gene_id].last >= coords.first - 1
+            overlap_count += 1
+            puts "#{Time.new}:   ERROR! On #{chromosome}, genes "\
+              "#{prev_gene_id.to_s} and #{gene_id.to_s} overlap by (at least) "\
+              "#{genes_for_this_chromosome[prev_gene_id].last - coords.first + 1}"\
+              ' bp.'
+          end
+        end
+        prev_gene_id = gene_id
+      end
+    end
+    if overlap_count > 0
+      abort("#{Time.new}:   ERROR! #{overlap_count} overlaps reported.")
+    end
+  end
+end
+
+
+################################################################################
 ### Read junction.bed file from user's experimental data
 # Parse junction.bed list.
 # Junction paths can be relative to the list path, or absolute. Ignore comments.
@@ -200,6 +270,44 @@ junction_list.each do |cond, paths|
 end
 
 # Import gff.
+# Since the UTRs from eupathdb are not all defined, best to be consistent and
+#   define genes as being from first to last CDS (except for tRNA and rRNA).
+# In field 9 -> Parent=rna_TGME49_203135-1 (N.B. all CDS are /-1$/).
+# N.B. if strand == "-", arranged in reverse numerical order, but let's not make
+#   either assumption here, just in case this file does not come from eupathdb.
+# I think these files don't contain any alternatively-spliced genes. At least,
+#   (for TGGT1 and TGME49) no entries have {$3 == "mRNA"} and contain "-2".
+#   Even if they did, this script only considers the terminal exons of all CDS
+#   sharing the same parent (without -1).
+# GFF header lines won't have split_line[2].
+puts "#{Time.new}: Parsing reference GFF file."
+refgff = ReferenceGFF.new
+File.open($options[:refgff_path]).each do |line|
+  split_line = line.split("\t")
+  skip = false
+  if split_line[2] == 'CDS'
+    match_data = /Parent=rna_(TG[^_]{2,4}_\d*[A-Z]?)-1(;|$)/.match(split_line[8])
+  elsif split_line[2] == 'tRNA' || split_line[2] == 'rRNA'
+    match_data = /Parent=(TG[^_]{2,4}_\d*)(;|$)/.match(split_line[8])
+  else
+    skip = true
+  end
+  if !skip
+    if match_data
+      refgff.write_gene(split_line[0], match_data[1], split_line[3].to_i, split_line[4].to_i)
+    else
+      abort('ERROR: the following line does not contain a gene_id in the ' \
+          "expected format\n#{line}")
+    end
+  end
+end
+
+# Check that the gff is ordered.
+puts "#{Time.new}:   Sorting reference gff."
+refgff.sort!
+p refgff.genes_by_chromosome
+puts "#{Time.new}:   Checking reference gff for overlapping genes."
+refgff.check_overlaps
 
 # Prune junctions with too few replicates, and output some statistics.
 puts "#{Time.new}: Pruning junctions in <#{$options[:min_replicates]} replicates."
