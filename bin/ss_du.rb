@@ -142,7 +142,11 @@ class UserJunctions
 
   # Sort junctions according to start coords.
   def sort!
-
+    @junctions.each do |condition, junctions_by_chromosome|
+      junctions_by_chromosome.each do |chromosome, _|
+        @junctions[condition][chromosome].sort!
+      end
+    end
   end
 end
 
@@ -197,7 +201,7 @@ end
 
 # Import gff.
 
-# Prune junctions with not enough replicates, and output some statistics.
+# Prune junctions with too few replicates, and output some statistics.
 puts "#{Time.new}: Pruning junctions in <#{$options[:min_replicates]} replicates."
 pre_count = junctions.count_junctions(false)
 junctions.prune!
@@ -208,7 +212,6 @@ max_replicates = junction_list.values.collect {|cond| cond.count}.max
   puts "#{Time.new}:   #{junctions.count_junctions(replicates)} junctions "\
       "confirmed in #{replicates} replicates."
 end
-
 
 # Sort junctions and gff.
 puts "#{Time.new}: Sorting junctions."
