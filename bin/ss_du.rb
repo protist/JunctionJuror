@@ -12,9 +12,10 @@
 # You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# 
+#
 
 require 'optparse'
+require 'set'
 $options = {}
 OptionParser.new do |opts|
   opts.banner='DESCRIPTION:'\
@@ -120,7 +121,7 @@ class UserJunctions
     @junctions.each_value do |junctions_by_chromosome|
       junctions_by_chromosome.each_value do |junctions|
         if replicates
-          total += junctions.count {|junction| junction[2] == replicates}
+          total += junctions.count { |junction| junction[2] == replicates }
         else
           total += junctions.count
         end
@@ -147,6 +148,62 @@ class UserJunctions
         @junctions[condition][chromosome].sort!
       end
     end
+  end
+
+  # Remove junctions on chromosomes not found in refgff. Returns array of
+  #   missing chromosomes.
+  def check_chromosomes!(valid_chromosomes)
+    rejects = []
+    @junctions.each do |_, junctions_by_chromosome|
+      junctions_by_chromosome.reject! do |chromosome_name, _|
+        if !(valid_chromosomes.index chromosome_name)
+          rejects << chromosome_name
+          true
+        end
+      end
+    end
+    rejects
+  end
+
+  # Assign genes to junctions. A gene is assigned if at least one matching base
+  #   from both flanks overlaps with the CDS. Otherwise it is discarded.
+  # It's faster to access the gene array with an incrementing counter rather
+  #   than conversion to an enumerator, then enum.next (and enum.peek).
+  #   https://gist.github.com/protist/f6d344cdc59571947677
+  # Returns the number of genes mapped to.
+  def assign_genes!(refgff)
+    matching_gene_list = Set.new
+    @junctions.each do |_, junctions_by_chromosome|
+      junctions_by_chromosome.each do |chromosome, junctions|
+        gene_index = 0
+        number_of_genes_to_test = refgff.length(chromosome)
+        junctions.map! do |junction|
+          parent_gene = nil
+          while !parent_gene && (gene_index < number_of_genes_to_test)
+            testing_gene = refgff.gene(chromosome, gene_index)
+            if (junction[0] - 1 >= testing_gene.last[0]) &&
+                (junction[0] - 1 <= testing_gene.last[1]) # Starts in the gene.
+              if junction[1] + 1 <= testing_gene.last[1] # Stops in the gene.
+                parent_gene = testing_gene.first
+              else # Junction stops post-gene -> break.
+                parent_gene = true
+              end
+            elsif junction[0] - 1 < testing_gene.last[0] # Starts before gene.
+              parent_gene = true
+            else # Junction starts after the gene -> look again.
+              gene_index += 1
+            end
+          end
+          if (parent_gene == true) || parent_gene.nil?
+            nil
+          else
+            matching_gene_list.add(parent_gene)
+            junction.push(parent_gene) # Add gene_id to junction.
+          end
+        end.compact! # Remove nils, i.e. those not matching to genes.
+      end
+    end
+    matching_gene_list.count # TODO: This only works for one replicate.
   end
 end
 
@@ -217,6 +274,22 @@ class ReferenceGFF
       abort("#{Time.new}:   ERROR! #{overlap_count} overlaps reported.")
     end
   end
+
+  # Return list of chromosomes.
+  def chromosomes
+    @genes_by_chromosome.keys
+  end
+
+  # Return number of genes in a given chromosome.
+  def length(chromosome)
+    @genes_by_chromosome[chromosome].length
+  end
+
+  # Return gene for a chromosome and gene-position index in an array.
+  def gene(chromosome, gene_index)
+    [@genes_by_chromosome[chromosome].keys[gene_index],
+     @genes_by_chromosome[chromosome].values[gene_index]]
+  end
 end
 
 
@@ -238,9 +311,9 @@ File.open($options[:junction_list]).each do |line|
 end
 
 puts "#{Time.new}:   #{junction_list.count} conditions: "\
-     "#{junction_list.keys.collect {|cond| cond.to_s}.join(', ')}"
+     "#{junction_list.keys.collect { |cond| cond.to_s }.join(', ')}"
 puts "#{Time.new}:   with replicates: "\
-     "#{junction_list.values.collect {|cond| cond.count}.join(', ')}."
+     "#{junction_list.values.collect { |cond| cond.count }.join(', ')}."
 
 # Parse junction.bed files themselves.
 #   http://genome.ucsc.edu/FAQ/FAQformat.html#format1
@@ -269,7 +342,7 @@ junction_list.each do |cond, paths|
   end
 end
 
-# Import gff.
+# Import GFF.
 # Since the UTRs from eupathdb are not all defined, best to be consistent and
 #   define genes as being from first to last CDS (except for tRNA and rRNA).
 # In field 9 -> Parent=rna_TGME49_203135-1 (N.B. all CDS are /-1$/).
@@ -302,10 +375,9 @@ File.open($options[:refgff_path]).each do |line|
   end
 end
 
-# Check that the gff is ordered.
+# Sort GFF.
 puts "#{Time.new}:   Sorting reference gff."
 refgff.sort!
-p refgff.genes_by_chromosome
 puts "#{Time.new}:   Checking reference gff for overlapping genes."
 refgff.check_overlaps
 
@@ -315,7 +387,7 @@ pre_count = junctions.count_junctions(false)
 junctions.prune!
 post_count = junctions.count_junctions(false)
 puts "#{Time.new}:   #{pre_count - post_count} junctions removed."
-max_replicates = junction_list.values.collect {|cond| cond.count}.max
+max_replicates = junction_list.values.collect { |cond| cond.count }.max
 ($options[:min_replicates]..max_replicates).each do |replicates|
   puts "#{Time.new}:   #{junctions.count_junctions(replicates)} junctions "\
       "confirmed in #{replicates} replicates."
@@ -325,5 +397,21 @@ end
 puts "#{Time.new}: Sorting junctions."
 junctions.sort!
 
-# Assign genes to junctions. A gene is assigned if at least one matching base
-#   from both flanks overlaps with the CDS. Otherwise it is discarded.
+# Remove junctions on chromosomes not found in refgff.
+puts "#{Time.new}: Verifying junction chromosomes."
+rejects = junctions.check_chromosomes!(refgff.chromosomes)
+if rejects != []
+  puts "#{Time.new}:   WARNING: junction chromosome#{'s' if rejects.count > 1}"\
+      ' not found in reference GFF.'
+  rejects.each { |reject| puts "#{Time.new}:     #{reject}" }
+end
+
+# Assign genes to junctions; discard intergenic junctions. Report on how many
+#   junctions are assigned and rejected, and how many genes are associated.
+puts "#{Time.new}: Assigning genes to junctions."
+pre_count = junctions.count_junctions(false)
+matching_gene_count = junctions.assign_genes!(refgff)
+post_count = junctions.count_junctions(false)
+puts "#{Time.new}:   #{pre_count - post_count} intergenic junctions removed."
+puts "#{Time.new}:   #{matching_gene_count} genes associated with junctions."
+
