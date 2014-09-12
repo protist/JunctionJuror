@@ -85,6 +85,7 @@ class UserJunctions
   # It will also store the associated gene ID.
   # @junctions
   # {:condition => {:chromosome => [[start, stop, count],…]}}}
+  #   TODO: refactor junction into hash
   # later,
   # {:condition => {:chromosome => [[start, stop, count, :gene_id],…]}}
   def initialize(junctions = {})
@@ -206,6 +207,42 @@ class UserJunctions
       end
     end
     matching_gene_list.count # TODO: This only works for one replicate.
+  end
+
+  # Determine when multiple junctions overlap with each other. This is defined
+  #   as including abutting junctions, i.e. with skipped bases adjacent.
+  #   Return a list of genes. Could also return a list of junctions, but the
+  #   specifics of which overlap is even more dependent on read depth. (The only
+  #   plausible usage for a list of junctions is comparison between conditions.)
+  def genes_with_overlaps
+    @as_gene_list = []
+    @junctions.each do |_, junctions_by_chromosome|
+      junctions_by_chromosome.each do |_, junctions|
+        prev_gene_id = nil
+        current_junctions = nil
+        junctions.each do |junction|
+          current_gene_id = junction[3]
+          if current_gene_id != prev_gene_id # New gene.
+            current_junctions = [junction.take(2)]
+            prev_gene_id = current_gene_id
+          elsif current_gene_id != @as_gene_list.last # i.e. not previously added
+            current_junctions.each do |checked_junction|
+              if (junction[1] >  checked_junction.first - 1) &&
+                  (junction[0] < checked_junction.last + 1) # overlap
+                @as_gene_list << current_gene_id
+                break
+              end
+            end
+            current_junctions << junction.take(2)
+          end
+        end
+      end
+    end
+    @as_gene_list # TODO: This only works for one replicate.
+  end
+
+  def count_genes_with_overlaps
+    @as_gene_list.count
   end
 end
 
@@ -421,3 +458,10 @@ puts "#{Time.new}:   #{pre_count - post_count} intergenic junctions removed."
 puts "#{Time.new}:   #{post_count} junctions remain."
 puts "#{Time.new}:   #{matching_gene_count} genes associated with junctions."
 
+#TODO Check junctions.junctions here for consistency after refactoring.
+
+# Determine when multiple junctions overlap with each other.
+puts "#{Time.new}: Identifying overlapping junctions."
+junctions.genes_with_overlaps
+puts "#{Time.new}:   #{junctions.count_genes_with_overlaps} genes have "\
+    'overlapping junctions.'
