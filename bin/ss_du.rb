@@ -170,7 +170,9 @@ class UserJunctions
   # It's faster to access the gene array with an incrementing counter rather
   #   than conversion to an enumerator, then enum.next (and enum.peek).
   #   https://gist.github.com/protist/f6d344cdc59571947677
-  # Returns the number of genes mapped to.
+  # It's also faster to use map!.compact! rather than inject or flat_map
+  #   https://gist.github.com/protist/f153d0465cae3f474081
+  # Returns the number of genes that have junctions mapped to them.
   def assign_genes!(refgff)
     matching_gene_list = Set.new
     @junctions.each do |_, junctions_by_chromosome|
@@ -388,10 +390,13 @@ junctions.prune!
 post_count = junctions.count_junctions(false)
 puts "#{Time.new}:   #{pre_count - post_count} junctions removed."
 max_replicates = junction_list.values.collect { |cond| cond.count }.max
-($options[:min_replicates]..max_replicates).each do |replicates|
-  puts "#{Time.new}:   #{junctions.count_junctions(replicates)} junctions "\
+total = ($options[:min_replicates]..max_replicates).inject(0) do |sum, replicates|
+  junctions_count = junctions.count_junctions(replicates)
+  puts "#{Time.new}:   #{junctions_count} junctions "\
       "confirmed in #{replicates} replicates."
+  sum + junctions_count
 end
+puts "#{Time.new}:   #{total} junctions in total"
 
 # Sort junctions and gff.
 puts "#{Time.new}: Sorting junctions."
@@ -413,5 +418,6 @@ pre_count = junctions.count_junctions(false)
 matching_gene_count = junctions.assign_genes!(refgff)
 post_count = junctions.count_junctions(false)
 puts "#{Time.new}:   #{pre_count - post_count} intergenic junctions removed."
+puts "#{Time.new}:   #{post_count} junctions remain."
 puts "#{Time.new}:   #{matching_gene_count} genes associated with junctions."
 
