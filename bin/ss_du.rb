@@ -241,8 +241,16 @@ class UserJunctions
     @as_gene_list # TODO: This only works for one replicate.
   end
 
+  # Return the number of genes containing overlapping junctions.
   def count_genes_with_overlaps
     @as_gene_list.count
+  end
+
+  # Write genes with overlapping junctions to file.
+  def write_genes_to_file(path)
+    File.open(path, 'w') do |output_file|
+      output_file.puts(@as_gene_list.join("\n"))
+    end
   end
 end
 
@@ -465,3 +473,7 @@ puts "#{Time.new}: Identifying overlapping junctions."
 junctions.genes_with_overlaps
 puts "#{Time.new}:   #{junctions.count_genes_with_overlaps} genes have "\
     'overlapping junctions.'
+
+# Write genes to file.
+puts "#{Time.new}: Writing genes to #{$options[:output_path]}."
+junctions.write_genes_to_file($options[:output_path])
