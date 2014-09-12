@@ -84,10 +84,9 @@ class UserJunctions
   # the chromosome and the coordinates of the skipped bases in the junction.
   # It will also store the associated gene ID.
   # @junctions
-  # {:condition => {:chromosome => [[start, stop, count],…]}}}
-  #   TODO: refactor junction into hash
+  # {:conditionX => {:chrX => [{:coords => [start, stop], :count => num},…]}}
   # later,
-  # {:condition => {:chromosome => [[start, stop, count, :gene_id],…]}}
+  # {:conditionX => {:chrX => [[start, stop, count, :gene_id],…]}}
   def initialize(junctions = {})
     @junctions = junctions
   end
@@ -106,25 +105,25 @@ class UserJunctions
     #   be better to read each replicate into individual objects, sort, then
     #   collate sequentially.
     junction_index = @junctions[condition][chromosome.to_sym].index do |junction|
-      junction[0] == start && junction[1] == stop
+      junction[:coords].first == start && junction[:coords].last == stop
     end
     if junction_index
-      @junctions[condition][chromosome.to_sym][junction_index][2] += 1
+      @junctions[condition][chromosome.to_sym][junction_index][:count] += 1
     else
-      @junctions[condition][chromosome.to_sym].push [start,stop,1]
+      @junctions[condition][chromosome.to_sym].push({coords: [start,stop], count: 1})
     end
   end
 
   # Return a count of the total number of junctions with specified replicates.
-  #   If `replicates` is false, then returns the total count.
+  #   If `replicates` is zero, then returns the total count.
   def count_junctions(replicates)
     total = 0
     @junctions.each_value do |junctions_by_chromosome|
       junctions_by_chromosome.each_value do |junctions|
-        if replicates
-          total += junctions.count { |junction| junction[2] == replicates }
-        else
+        if replicates == 0
           total += junctions.count
+        else
+          total += junctions.count { |junction| junction[:count] == replicates }
         end
       end
     end
@@ -134,19 +133,21 @@ class UserJunctions
   # Remove junctions according to number of confirming replicates.
   def prune!
     @junctions.each do |condition, junctions_by_chromosome|
-      junctions_by_chromosome.each do |chromosome, _|
+      junctions_by_chromosome.each_key do |chromosome|
         @junctions[condition][chromosome].reject! do |junction|
-          junction[2] < $options[:min_replicates]
+          junction[:count] < $options[:min_replicates]
         end
       end
     end
   end
 
   # Sort junctions according to start coords.
+  #   sort_by is probably more efficient (or similar) than sort here.
+  #   https://gist.github.com/protist/380ec7f0a3a53c7835f0
   def sort!
     @junctions.each do |condition, junctions_by_chromosome|
-      junctions_by_chromosome.each do |chromosome, _|
-        @junctions[condition][chromosome].sort!
+      junctions_by_chromosome.each_key do |chromosome|
+        @junctions[condition][chromosome].sort_by! { |junction| junction[:coords] }
       end
     end
   end
@@ -155,7 +156,7 @@ class UserJunctions
   #   missing chromosomes.
   def check_chromosomes!(valid_chromosomes)
     rejects = []
-    @junctions.each do |_, junctions_by_chromosome|
+    @junctions.each_value do |junctions_by_chromosome|
       junctions_by_chromosome.reject! do |chromosome_name, _|
         if !(valid_chromosomes.index chromosome_name)
           rejects << chromosome_name
@@ -176,7 +177,7 @@ class UserJunctions
   # Returns the number of genes that have junctions mapped to them.
   def assign_genes!(refgff)
     matching_gene_list = Set.new
-    @junctions.each do |_, junctions_by_chromosome|
+    @junctions.each_value do |junctions_by_chromosome|
       junctions_by_chromosome.each do |chromosome, junctions|
         gene_index = 0
         number_of_genes_to_test = refgff.length(chromosome)
@@ -184,14 +185,14 @@ class UserJunctions
           parent_gene = nil
           while !parent_gene && (gene_index < number_of_genes_to_test)
             testing_gene = refgff.gene(chromosome, gene_index)
-            if (junction[0] - 1 >= testing_gene.last[0]) &&
-                (junction[0] - 1 <= testing_gene.last[1]) # Starts in the gene.
-              if junction[1] + 1 <= testing_gene.last[1] # Stops in the gene.
+            if (junction[:coords].first - 1 >= testing_gene.last[0]) &&
+                (junction[:coords].first - 1 <= testing_gene.last[1]) # Starts in gene.
+              if junction[:coords].last + 1 <= testing_gene.last[1] # Stops in gene.
                 parent_gene = testing_gene.first
               else # Junction stops post-gene -> break.
                 parent_gene = true
               end
-            elsif junction[0] - 1 < testing_gene.last[0] # Starts before gene.
+            elsif junction[:coords].first - 1 < testing_gene.last[0] # Starts before gene.
               parent_gene = true
             else # Junction starts after the gene -> look again.
               gene_index += 1
@@ -201,7 +202,7 @@ class UserJunctions
             nil
           else
             matching_gene_list.add(parent_gene)
-            junction.push(parent_gene) # Add gene_id to junction.
+            junction.merge({gene_id:parent_gene}) # Add gene_id to junction.
           end
         end.compact! # Remove nils, i.e. those not matching to genes.
       end
@@ -216,24 +217,24 @@ class UserJunctions
   #   plausible usage for a list of junctions is comparison between conditions.)
   def genes_with_overlaps
     @as_gene_list = []
-    @junctions.each do |_, junctions_by_chromosome|
-      junctions_by_chromosome.each do |_, junctions|
+    @junctions.each_value do |junctions_by_chromosome|
+      junctions_by_chromosome.each_value do |junctions|
         prev_gene_id = nil
-        current_junctions = nil
+        current_junctions_coords = nil
         junctions.each do |junction|
-          current_gene_id = junction[3]
+          current_gene_id = junction[:gene_id]
           if current_gene_id != prev_gene_id # New gene.
-            current_junctions = [junction.take(2)]
+            current_junctions_coords = [junction[:coords]]
             prev_gene_id = current_gene_id
           elsif current_gene_id != @as_gene_list.last # i.e. not previously added
-            current_junctions.each do |checked_junction|
-              if (junction[1] >  checked_junction.first - 1) &&
-                  (junction[0] < checked_junction.last + 1) # overlap
+            current_junctions_coords.each do |checked_junction|
+              if (junction[:coords].last >  checked_junction.first - 1) &&
+                  (junction[:coords].first < checked_junction.last + 1) # overlap
                 @as_gene_list << current_gene_id
                 break
               end
             end
-            current_junctions << junction.take(2)
+            current_junctions_coords << junction[:coords]
           end
         end
       end
@@ -256,7 +257,7 @@ end
 
 ################################################################################
 ### Define ReferenceGFF class
-class ReferenceGFF
+class ReferenceGFF # TODO: refactor as hash.
   # A ReferenceGFF object stores gene models, specifically chromosome, gene ID,
   # and terminal start and stop coordinates (e.g. of the CDS).
   def initialize(genes_by_chromosome = {})
@@ -430,9 +431,9 @@ refgff.check_overlaps
 
 # Prune junctions with too few replicates, and output some statistics.
 puts "#{Time.new}: Pruning junctions in <#{$options[:min_replicates]} replicates."
-pre_count = junctions.count_junctions(false)
+pre_count = junctions.count_junctions(0)
 junctions.prune!
-post_count = junctions.count_junctions(false)
+post_count = junctions.count_junctions(0)
 puts "#{Time.new}:   #{pre_count - post_count} junctions removed."
 max_replicates = junction_list.values.collect { |cond| cond.count }.max
 total = ($options[:min_replicates]..max_replicates).inject(0) do |sum, replicates|
@@ -459,14 +460,12 @@ end
 # Assign genes to junctions; discard intergenic junctions. Report on how many
 #   junctions are assigned and rejected, and how many genes are associated.
 puts "#{Time.new}: Assigning genes to junctions."
-pre_count = junctions.count_junctions(false)
+pre_count = junctions.count_junctions(0)
 matching_gene_count = junctions.assign_genes!(refgff)
-post_count = junctions.count_junctions(false)
+post_count = junctions.count_junctions(0)
 puts "#{Time.new}:   #{pre_count - post_count} intergenic junctions removed."
 puts "#{Time.new}:   #{post_count} junctions remain."
 puts "#{Time.new}:   #{matching_gene_count} genes associated with junctions."
-
-#TODO Check junctions.junctions here for consistency after refactoring.
 
 # Determine when multiple junctions overlap with each other.
 puts "#{Time.new}: Identifying overlapping junctions."
