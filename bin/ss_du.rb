@@ -370,7 +370,7 @@ File.open($options[:junction_list]).each do |line|
 end
 
 puts "#{Time.new}:   #{junction_list.count} conditions: "\
-     "#{junction_list.keys.collect { |cond| cond.to_s }.join(', ')}"
+     "#{junction_list.keys.collect { |cond| cond.to_s }.join(', ')}."
 puts "#{Time.new}:   with replicates: "\
      "#{junction_list.values.collect { |cond| cond.count }.join(', ')}."
 
@@ -441,7 +441,7 @@ puts "#{Time.new}:   Checking reference gff for overlapping genes."
 refgff.check_overlaps
 
 # Prune junctions with too few replicates, and output some statistics.
-puts "#{Time.new}: Pruning junctions in <#{$options[:min_replicates]} replicates."
+puts "#{Time.new}: Pruning junctions in < #{$options[:min_replicates]} replicates."
 pre_count = junctions.count_junctions(0)
 junctions.prune!
 post_count = junctions.count_junctions(0)
@@ -453,7 +453,7 @@ total = ($options[:min_replicates]..max_replicates).inject(0) do |sum, replicate
       "confirmed in #{replicates} replicates."
   sum + junctions_count
 end
-puts "#{Time.new}:   #{total} junctions in total"
+puts "#{Time.new}:   #{total} junctions in total."
 
 # Sort junctions and gff.
 puts "#{Time.new}: Sorting junctions."
