@@ -39,7 +39,7 @@ OptionParser.new do |opts|
   $options[:verbosity] = 0
   opts.on('-v', '--[no-]verbose [OPT]', 'Run verbosely, optionally at level 2') do |v|
     $options[:verbosity] = (v || 1).to_i
-  end
+  end #TODO: Use higher levels of verbosity.
   opts.on('-j', '--junction JUNCTION.BED.LIST',
           'JUNCTION.BED.LIST is a required space-delimited list, with each line '\
           'comprising a path to a junction.bed file, followed by a condition.') do |j|
@@ -103,7 +103,7 @@ class UserJunctions
   attr_reader(:junctions)
 
   # Create a new condition and chromosome if necessary, then add to count for
-  #   coordinates.
+  #   coordinates. TODO: there can be duplicates in a single replicate.
   def write_junctions_for_replicate(condition, chromosome, start, stop)
     # Create new condition hash if it doesn't exist.
     @junctions[condition] ||= {}
@@ -368,7 +368,8 @@ File.open($options[:junction_list]).each do |line|
   end
 end
 
-puts "#{Time.new}:   #{junction_list.count} conditions: "\
+puts "#{Time.new}:   #{junction_list.count} condition"\
+     "#{'s' if junction_list.count > 1}: "\
      "#{junction_list.keys.collect { |cond| cond.to_s }.join(', ')}."
 puts "#{Time.new}:   with replicates: "\
      "#{junction_list.values.collect { |cond| cond.count }.join(', ')}."
@@ -452,7 +453,7 @@ total = ($options[:min_replicates]..max_replicates).inject(0) do |sum, replicate
       "confirmed in #{replicates} replicates."
   sum + junctions_count
 end
-puts "#{Time.new}:   #{total} junctions in total."
+puts "#{Time.new}:   #{total} junctions remain."
 
 # Sort junctions and gff.
 puts "#{Time.new}: Sorting junctions."
@@ -462,8 +463,8 @@ junctions.sort!
 puts "#{Time.new}: Verifying junction chromosomes."
 rejects = junctions.check_chromosomes!(refgff.chromosomes)
 if rejects != []
-  puts "#{Time.new}:   WARNING: junction chromosome#{'s' if rejects.count > 1}"\
-      ' not found in reference GFF.'
+  puts "#{Time.new}:   WARNING: chromosome#{'s' if rejects.count > 1}"\
+      ' found in junctions.beds but without genes in reference GFF.'
   rejects.each { |reject| puts "#{Time.new}:     #{reject}" }
 end
 
