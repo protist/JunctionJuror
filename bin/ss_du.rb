@@ -12,16 +12,26 @@
 # You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+# This script attempted to identify alternative splicing based on junction
+#   reads. It doesn't acknowledge intron retention.
 #
+# Firstly, junction beds files are read from a list, discarding junctions that
+#   are confirmed in less than NUMBER replicates. It then assigns junctions to
+#   genes as per GFF_FILE, and discards those that do not have at least one
+#   matching base within the CDS in both flanks. Then, it detects when multiple
+#   junctions overlap, including when adjacent skipped regions abut. Finally,
+#   a list of genes with overlapping junctions is output.
 
 require 'optparse'
 require 'set'
 $options = {}
 OptionParser.new do |opts|
-  opts.banner='DESCRIPTION:'\
-              'TODO
-Usage:' # TODO: write description
-  opts.on_tail('-h', '--help', 'Show this message') do
+  opts.banner='This script reads in junctions.beds files, discarding '\
+              'junctions confirmed in less than NUMBER replicates. It assigns'\
+              'junctions to genes as per GFF_FILE, discarding intergenic '\
+              'junctions. It detects when multiple junctions overlap, and '\
+              "outputs the list of genes where this occurs.\nUsage:"
+    opts.on_tail('-h', '--help', 'Show this message') do
     puts opts; exit
   end
   # Verbosity off (or == 0) is base-level information. Verbosity == 1 is
@@ -83,10 +93,9 @@ class UserJunctions
   # A UserJunctions object stores information from TopHat outputs, specifically
   # the chromosome and the coordinates of the skipped bases in the junction.
   # It will also store the associated gene ID.
-  # @junctions
-  # {:conditionX => {:chrX => [{:coords => [start, stop], :count => num},…]}}
-  # later,
-  # {:conditionX => {:chrX => [[start, stop, count, :gene_id],…]}}
+  # @junctions format:
+  #   {:conditionX => {:chrX => [{:coords => [start, stop], :count => num},…]}}
+  #   later, add :gene_id => id
   def initialize(junctions = {})
     @junctions = junctions
   end
@@ -259,7 +268,7 @@ end
 
 ################################################################################
 ### Define ReferenceGFF class
-class ReferenceGFF # TODO: refactor as hash.
+class ReferenceGFF
   # A ReferenceGFF object stores gene models, specifically chromosome, gene ID,
   # and terminal start and stop coordinates (e.g. of the CDS).
   def initialize(genes_by_chromosome = {})
