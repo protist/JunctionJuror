@@ -190,15 +190,17 @@ class UserJunctions
               if junction[:coords].last + 1 <= testing_gene.last[1] # Stops in gene.
                 parent_gene = testing_gene.first
               else # Junction stops post-gene -> break.
-                parent_gene = true
+                parent_gene = nil
+                break
               end
             elsif junction[:coords].first - 1 < testing_gene.last[0] # Starts before gene.
-              parent_gene = true
+              parent_gene = nil
+              break
             else # Junction starts after the gene -> look again.
               gene_index += 1
             end
           end
-          if (parent_gene == true) || parent_gene.nil?
+          if parent_gene.nil?
             nil
           else
             matching_gene_list.add(parent_gene)
