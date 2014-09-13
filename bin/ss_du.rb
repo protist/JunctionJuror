@@ -31,11 +31,12 @@ OptionParser.new do |opts|
               'junctions to genes as per GFF_FILE, discarding intergenic '\
               'junctions. It detects when multiple junctions overlap, and '\
               "outputs the list of genes where this occurs.\nUsage:"
-    opts.on_tail('-h', '--help', 'Show this message') do
+  opts.on_tail('-h', '--help', 'Show this message') do
     puts opts; exit
   end
   # Verbosity off (or == 0) is base-level information. Verbosity == 1 is
   #   chromosome-level. Verbosity == 2 is junction/gene-level.
+  $options[:verbosity] = 0
   opts.on('-v', '--[no-]verbose [OPT]', 'Run verbosely, optionally at level 2') do |v|
     $options[:verbosity] = (v || 1).to_i
   end
@@ -51,6 +52,7 @@ OptionParser.new do |opts|
   opts.on('-o', '--output OUTPUT_PATH', 'OUTPUT_PATH is required.') do |o|
     $options[:output_path] = File.expand_path(o)
   end
+  $options[:min_replicates] = 2
   opts.on('-t', '--threshold NUMBER', 'NUMBER replicates are needed to '\
       'confirm a junction. Defaults to 2.') do |t|
     $options[:min_replicates] = t.to_i
@@ -68,8 +70,6 @@ end
 raise OptionParser::MissingArgument if $options[:junction_list].nil? ||
     $options[:refgff_path].nil? ||
     $options[:output_path].nil?
-$options[:verbosity] = 0 if !$options[:verbosity]
-$options[:min_replicates] = 2 if !$options[:min_replicates]
 
 # Check options.
 to_abort=false
