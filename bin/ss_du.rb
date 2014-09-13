@@ -221,8 +221,8 @@ class UserJunctions
     matching_gene_list.count # TODO: This only works for one replicate.
   end
 
-  # Determine when multiple junctions overlap with each other. This is defined
-  #   as including abutting junctions, i.e. with skipped bases adjacent.
+  # Determine when multiple junctions overlap with each other. This includes
+  #   abutting junctions, i.e. with skipped bases adjacent.
   #   Return a list of genes. Could also return a list of junctions, but the
   #   specifics of which overlap is even more dependent on read depth. (The only
   #   plausible usage for a list of junctions is comparison between conditions.)
@@ -239,8 +239,7 @@ class UserJunctions
             prev_gene_id = current_gene_id
           elsif current_gene_id != @as_gene_list.last # i.e. not previously added
             current_junctions_coords.each do |checked_junction|
-              if (junction[:coords].last >  checked_junction.first - 1) &&
-                  (junction[:coords].first < checked_junction.last + 1) # overlap
+              if junction[:coords].first <= checked_junction.last + 1 # overlap
                 @as_gene_list << current_gene_id
                 break
               end
