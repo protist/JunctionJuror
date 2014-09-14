@@ -21,6 +21,18 @@
 #   matching base within the CDS in both flanks. Then, it detects when multiple
 #   junctions overlap, including when adjacent skipped regions abut. Finally,
 #   a list of genes with overlapping junctions is output.
+#
+# N.B. this script expects there to be no duplicates in individual junctions.bed
+#   files. I've seen one situation where this is not true, and junctions
+#   antisense to each other were duplicated. To check for duplicates, you can
+#   run something like:
+#   for i in */junctions.bed; do <$i awk '{sub(/,.*/,"", $11); sub(/.*,/,"", $12); print $1, $2 + $11, $2 + $12 + 1}'| sort |uniq -d; done
+#
+# Finally, this script was written with comparison of multiple conditions in
+#   mind, but this has not been completed yet. It's statistically non-trivial
+#   to achieve this, and depends on read depth even more than the current code.
+#   However, code specific to multiple conditions has been left in, for possible
+#   future development.
 
 require 'optparse'
 require 'set'
@@ -34,12 +46,6 @@ OptionParser.new do |opts|
   opts.on_tail('-h', '--help', 'Show this message') do
     puts opts; exit
   end
-  # Verbosity off (or == 0) is base-level information. Verbosity == 1 is
-  #   chromosome-level. Verbosity == 2 is junction/gene-level.
-  $options[:verbosity] = 0
-  opts.on('-v', '--[no-]verbose [OPT]', 'Run verbosely, optionally at level 2') do |v|
-    $options[:verbosity] = (v || 1).to_i
-  end #TODO: Use higher levels of verbosity.
   opts.on('-j', '--junction JUNCTION.BED.LIST',
           'JUNCTION.BED.LIST is a required space-delimited list, with each line '\
           'comprising a path to a junction.bed file, followed by a condition.') do |j|
@@ -103,16 +109,18 @@ class UserJunctions
   attr_reader(:junctions)
 
   # Create a new condition and chromosome if necessary, then add to count for
-  #   coordinates. TODO: there can be duplicates in a single replicate.
+  #   coordinates. TODO: there can be duplicates in a single replicate. I've seen
+  #   this once, for junctions antisense to each other. They were adjacent in
+  #   the junctions.bed file.
   def write_junctions_for_replicate(condition, chromosome, start, stop)
     # Create new condition hash if it doesn't exist.
     @junctions[condition] ||= {}
     # Create new chromosome array if it doesn't exist.
     @junctions[condition][chromosome.to_sym] ||= []
     # Append coordinates to this array if necessary; add count.
-    # TODO: This reads the entire array each time. If this is too slow, it might
-    #   be better to read each replicate into individual objects, sort, then
-    #   collate sequentially.
+    # This reads the entire array each time. If this is too slow, it might be
+    #   better to read each replicate into individual objects, sort, then
+    #   collate sequentially. N.B. this takes about 40 seconds.
     junction_index = @junctions[condition][chromosome.to_sym].index do |junction|
       junction[:coords].first == start && junction[:coords].last == stop
     end
