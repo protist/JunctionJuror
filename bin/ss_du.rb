@@ -63,6 +63,9 @@ OptionParser.new do |opts|
       'confirm a junction. Defaults to 2.') do |t|
     $options[:min_replicates] = t.to_i
   end
+  opts.on('-e', '--multi-exons', 'Only output a file listing multi-exon genes.') do |e|
+    $options[:multi_exons] = e
+  end
 end.parse!
 
 # Require Ruby 1.9.2 for ordered hash. This is quicker than continual hash.sort.
@@ -227,6 +230,24 @@ class UserJunctions
       end
     end
     matching_gene_list.count # TODO: This only works for one replicate.
+  end
+
+  # Write all multi-exon genes to file.
+  def write_all_genes_to_file(path)
+    File.open(path, 'w') do |output_file|
+      @junctions.each_value do |junctions_by_chromosome|
+        junctions_by_chromosome.each_value do |junctions|
+          prev_gene_id = nil
+          junctions.each do |junction|
+            current_gene_id = junction[:gene_id]
+            if current_gene_id != prev_gene_id # New gene.
+              output_file.puts current_gene_id
+              prev_gene_id = current_gene_id
+            end
+          end
+        end
+      end
+    end
   end
 
   # Determine when multiple junctions overlap with each other. This includes
@@ -485,6 +506,13 @@ post_count = junctions.count_junctions(0)
 puts "#{Time.new}:   #{pre_count - post_count} intergenic junctions removed."
 puts "#{Time.new}:   #{post_count} junctions remain."
 puts "#{Time.new}:   #{matching_gene_count} genes associated with junctions."
+
+# If -e option, then write all multi-exon genes instead.
+if $options[:multi_exons]
+  puts "#{Time.new}: Writing all multi-exon genes to #{$options[:output_path]}."
+  junctions.write_all_genes_to_file($options[:output_path])
+  exit
+end
 
 # Determine when multiple junctions overlap with each other.
 puts "#{Time.new}: Identifying overlapping junctions."
