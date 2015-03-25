@@ -28,4 +28,4 @@ present in NUMBER replicates to be accepted as real. This defaults to two.
 
 **Only list multi-exon genes** (`-e`, `--multi-exons`). Instead of reporting
 alternatively-spliced genes, JunctionJuror can also list multi-exon genes, i.e.
-those containing at least one confirmed junction.
+those containing at least one *confirmed* junction as above.
