@@ -14,8 +14,8 @@ a path to a junction.bed file, followed by a condition. The current version of
 JunctionJuror analyses single conditions, and hence this file should only
 contain reference to one condition.
 
-**Reference gene models** (`-g`, `--ref_gff GFF_FILE`). The gff parser is designed
-for use with gff files from [EuPathDB](http://eupathdb.org). It only parses
+**Reference gene models** (`-g`, `--ref_gff GFF_FILE`). The GFF parser is designed
+for use with GFF files from [EuPathDB](http://eupathdb.org). It only parses
 features marked as `CDS` (and `tRNA` and `rRNA`), since UTR information is not
 available for all genes.
 
@@ -27,5 +27,5 @@ output the list of multi-exon genes instead.
 present in NUMBER replicates to be accepted as real. This defaults to two.
 
 **Only list multi-exon genes** (`-e`, `--multi-exons`). Instead of reporting
-alternatively spliced genes, JunctionJuror can also list multi-exon genes, i.e.
+alternatively-spliced genes, JunctionJuror can also list multi-exon genes, i.e.
 those containing at least one confirmed junction.
